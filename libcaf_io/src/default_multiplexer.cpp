@@ -1248,9 +1248,9 @@ void dgram_handler::ack_writes(bool x) {
 }
 
 
-void dgram_handler::write(id_type id, const void* buf, size_t num_bytes) {
+void dgram_handler::write(dgram_handle hdl, const void* buf, size_t num_bytes) {
   wr_offline_buf_.emplace_back();
-  wr_offline_buf_.back().first = id;
+  wr_offline_buf_.back().first = hdl;
   wr_offline_buf_.back().second.assign(
     reinterpret_cast<const char*>(buf),
     reinterpret_cast<const char*>(buf) + num_bytes
@@ -1268,12 +1268,12 @@ void dgram_handler::flush(const manager_ptr& mgr) {
   }
 }
 
-void dgram_handler::add_endpoint(id_type id, ip_endpoint& ep,
+void dgram_handler::add_endpoint(dgram_handle hdl, ip_endpoint& ep,
                                  const manager_ptr mgr) {
   auto itr = from_ep_.find(ep);
   if (itr == from_ep_.end()) {
-    from_ep_[ep] = id;
-    from_id_[id] = ep;
+    from_ep_[ep] = hdl;
+    from_id_[hdl] = ep;
     writer_ = mgr;
   } else if (!writer_) {
     writer_ = mgr;
@@ -1284,10 +1284,10 @@ void dgram_handler::add_endpoint(id_type id, ip_endpoint& ep,
   }
 }
 
-void dgram_handler::remove_endpoint(id_type id) {
+void dgram_handler::remove_endpoint(dgram_handle hdl) {
 //  std::cout << "[re] removing {" << id << "}" << std::endl;
-  CAF_LOG_TRACE(CAF_ARG(id));
-  auto itr = from_id_.find(id);
+  CAF_LOG_TRACE(CAF_ARG(hdl));
+  auto itr = from_id_.find(hdl);
   if (itr != from_id_.end()) {
     from_ep_.erase(itr->second);
     from_id_.erase(itr);
@@ -1818,7 +1818,7 @@ void dgram_servant_impl::ack_writes(bool enable) {
 }
 
 std::vector<char>& dgram_servant_impl::wr_buf(dgram_handle hdl) {
-  return handler_ptr_->wr_buf(hdl.id());
+  return handler_ptr_->wr_buf(hdl);
 }
 
 std::vector<char>& dgram_servant_impl::rd_buf() {
@@ -1859,12 +1859,13 @@ uint16_t dgram_servant_impl::local_port() const {
 }
 
 void dgram_servant_impl::add_endpoint(ip_endpoint& ep, int64_t id) {
-  endpoints_[dgram_handle::from_int(id)] = ep;
-  handler_ptr_->add_endpoint(id, ep, this);
+  auto hdl = dgram_handle::from_int(id);
+  endpoints_[hdl] = ep;
+  handler_ptr_->add_endpoint(hdl, ep, this);
 }
 
 void dgram_servant_impl::remove_endpoint() {
-  handler_ptr_->remove_endpoint(hdl().id());
+  handler_ptr_->remove_endpoint(hdl());
 }
 
 void dgram_servant_impl::launch() {

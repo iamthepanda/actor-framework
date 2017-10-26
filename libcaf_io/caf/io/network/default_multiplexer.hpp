@@ -732,11 +732,8 @@ public:
   /// interface to `std::vector`.
   using buffer_type = std::vector<char>;
 
-  /// ID type to identify dgram servants
-  using id_type = int64_t;
-
   /// a job for sending a datagram
-  using job_type = std::pair<id_type, buffer_type>;
+  using job_type = std::pair<dgram_handle, buffer_type>;
 
   dgram_handler(default_multiplexer& backend_ref, native_socket sockfd);
 
@@ -762,14 +759,14 @@ public:
 
   /// Copies data to the write buffer.
   /// @warning Not thread safe.
-  void write(id_type id, const void* buf, size_t num_bytes);
+  void write(dgram_handle hdl, const void* buf, size_t num_bytes);
 
   /// Returns the write buffer of this stream.
   /// @warning Must not be modified outside the IO multiplexers event loop
   ///          once the stream has been started.
-  inline buffer_type& wr_buf(id_type id) {
+  inline buffer_type& wr_buf(dgram_handle hdl) {
     wr_offline_buf_.emplace_back();
-    wr_offline_buf_.back().first = id;
+    wr_offline_buf_.back().first = hdl;
     return wr_offline_buf_.back().second;
   }
 
@@ -792,9 +789,9 @@ public:
 
   void removed_from_loop(operation op) override;
 
-  void add_endpoint(id_type id, ip_endpoint& ep, const manager_ptr mgr);
+  void add_endpoint(dgram_handle hdl, ip_endpoint& ep, const manager_ptr mgr);
 
-  void remove_endpoint(id_type id);
+  void remove_endpoint(dgram_handle hdl);
 
   inline ip_endpoint& last_sender() {
     return sender_;
@@ -829,9 +826,7 @@ protected:
                           << to_string(sender_) << "' is invalid" << std::endl;
                 abort();
               }
-              consumed = reader_->consume(&backend(),
-                                          dgram_handle::from_int(itr->second),
-                                          rd_buf_);
+              consumed = reader_->consume(&backend(), itr->second, rd_buf_);
             }
             bytes_read_ = rb;
             prepare_next_read();
@@ -848,7 +843,7 @@ protected:
         auto itr = from_id_.find(wr_buf_.first);
         if (itr == from_id_.end()) {
           // TODO: handle_error
-          std::cout << "[he] unknown servant {" << wr_buf_.first << "}"
+          std::cout << "[he] unknown servant {" << wr_buf_.first.id() << "}"
                     << std::endl;
           abort();
           return;
@@ -863,7 +858,7 @@ protected:
         } else if (wb > 0) {
           CAF_ASSERT(wb == wr_buf_.second.size());
           if (ack_writes_) {
-            writer_->datagram_sent(&backend(), dgram_handle::from_int(id), wb);
+            writer_->datagram_sent(&backend(), id, wb);
           }
           prepare_next_write();
         } else {
@@ -895,8 +890,8 @@ private:
   size_t bytes_read_;
   manager_ptr reader_;
 
-  std::unordered_map<ip_endpoint, id_type> from_ep_;
-  std::unordered_map<id_type, ip_endpoint> from_id_;
+  std::unordered_map<ip_endpoint, dgram_handle> from_ep_;
+  std::unordered_map<dgram_handle, ip_endpoint> from_id_;
 
   // addr of last sender
   ip_endpoint sender_;
@@ -1035,7 +1030,7 @@ public:
 
 private:
   bool launched_;
-  std::unordered_map<dgram_handle,ip_endpoint> endpoints_;
+  std::unordered_map<dgram_handle, ip_endpoint> endpoints_;
   std::shared_ptr<handler_type> handler_ptr_;
 };
 
